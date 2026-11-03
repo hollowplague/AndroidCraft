@@ -1,0 +1,6 @@
+{
+  "name": "Minecraft Kotlin Edition",
+  "description": "A 3D Minecraft voxel sandbox game in Kotlin with OpenGL ES shaders, procedural terrain, and mobile touch controls.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

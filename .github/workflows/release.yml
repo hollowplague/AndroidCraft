@@ -3,12 +3,11 @@ name: Build and Release AndroidCraft APK
 on:
   push:
     branches:
-      - master
-      - main
+      - '**'
     tags:
-      - 'v*'
+      - '*'
   release:
-    types: [published, created]
+    types: [published, created, edited]
   workflow_dispatch:
     inputs:
       tag_name:
@@ -59,11 +58,15 @@ jobs:
       - name: Prepare AndroidCraft-0.1.0 APK
         run: |
           mkdir -p release-artifacts
-          if [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
-            cp app/build/outputs/apk/debug/app-debug.apk release-artifacts/AndroidCraft-0.1.0.apk
-            echo "Successfully prepared release-artifacts/AndroidCraft-0.1.0.apk"
+          APK_FILE=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ -n "$APK_FILE" ] && [ -f "$APK_FILE" ]; then
+            echo "Found APK: $APK_FILE"
+            cp "$APK_FILE" release-artifacts/AndroidCraft-0.1.0.apk
+            cp "$APK_FILE" release-artifacts/AndroidCraft-0.1.0
+            ls -la release-artifacts/
+            echo "Successfully prepared release-artifacts/AndroidCraft-0.1.0.apk and release-artifacts/AndroidCraft-0.1.0"
           else
-            echo "APK not found at app/build/outputs/apk/debug/app-debug.apk!"
+            echo "APK not found!"
             find app/build -name "*.apk"
             exit 1
           fi
@@ -72,18 +75,38 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AndroidCraft-0.1.0
-          path: release-artifacts/AndroidCraft-0.1.0.apk
+          path: release-artifacts/*
           if-no-files-found: error
 
-      - name: Publish to GitHub Releases
+      - name: Publish to GitHub Releases (Action)
+        id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag_name || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || 'v0.1.0' }}
-          name: ${{ github.event.inputs.release_name || 'AndroidCraft v0.1.0' }}
+          tag_name: ${{ github.event.release.tag_name || github.event.inputs.tag_name || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || 'v0.1.0' }}
+          name: ${{ github.event.release.name || github.event.inputs.release_name || 'AndroidCraft v0.1.0' }}
           draft: false
           prerelease: false
           make_latest: true
           generate_release_notes: true
-          files: release-artifacts/AndroidCraft-0.1.0.apk
+          files: |
+            release-artifacts/AndroidCraft-0.1.0.apk
+            release-artifacts/AndroidCraft-0.1.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Fallback to GitHub CLI Release (if action encountered issue)
+        if: always() && steps.create_release.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.release.tag_name || github.event.inputs.tag_name || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || 'v0.1.0' }}"
+          TITLE="${{ github.event.release.name || github.event.inputs.release_name || 'AndroidCraft v0.1.0' }}"
+          echo "Attempting fallback via official GitHub CLI with tag: $TAG..."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists. Uploading assets..."
+            gh release upload "$TAG" release-artifacts/* --clobber
+          else
+            echo "Creating new release $TAG..."
+            gh release create "$TAG" release-artifacts/* --title "$TITLE" --notes "AndroidCraft 0.1.0 APK Release" --latest
+          fi

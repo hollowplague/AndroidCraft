@@ -43,11 +43,13 @@ jobs:
       - name: Prepare AndroidCraft-0.1.0 APK
         run: |
           mkdir -p release-artifacts
-          cp app/build/outputs/apk/debug/app-debug.apk release-artifacts/AndroidCraft-0.1.0.apk
+          APK_FILE=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          cp "$APK_FILE" release-artifacts/AndroidCraft-0.1.0.apk
+          cp "$APK_FILE" release-artifacts/AndroidCraft-0.1.0
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: AndroidCraft-0.1.0
-          path: release-artifacts/AndroidCraft-0.1.0.apk
+          path: release-artifacts/*
           if-no-files-found: error

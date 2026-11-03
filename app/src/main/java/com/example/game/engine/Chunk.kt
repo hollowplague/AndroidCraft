@@ -75,6 +75,29 @@ class Chunk(val chunkX: Int, val chunkZ: Int) {
         }
     }
 
+    fun setBlockFast(x: Int, y: Int, z: Int, typeId: Byte) {
+        if (x in 0 until SIZE_X && y in 0 until HEIGHT && z in 0 until SIZE_Z) {
+            blocks[getIndex(x, y, z)] = typeId
+        }
+    }
+
+    private fun getNeighborBlock(
+        world: VoxelWorld,
+        lx: Int, y: Int, lz: Int,
+        dx: Int, dy: Int, dz: Int,
+        worldBaseX: Int, worldBaseZ: Int
+    ): BlockType {
+        val ny = y + dy
+        if (ny < 0 || ny >= HEIGHT) return BlockType.AIR
+        val nx = lx + dx
+        val nz = lz + dz
+        return if (nx in 0 until SIZE_X && nz in 0 until SIZE_Z) {
+            BlockType.fromId(blocks[getIndex(nx, ny, nz)])
+        } else {
+            world.getBlock(worldBaseX + nx, ny, worldBaseZ + nz)
+        }
+    }
+
     /**
      * Builds OpenGL vertex buffers using Hidden-Face Culling.
      * All 6 cube faces are triangulated with counter-clockwise winding
@@ -100,7 +123,7 @@ class Chunk(val chunkX: Int, val chunkZ: Int) {
                     val targetList = if (block.isFluid || block == BlockType.GLASS) transFloats else opaqueFloats
 
                     // TOP Face (+Y) - 1.0 daylight
-                    val topBlock = world.getBlock(worldBaseX + x, y + 1, worldBaseZ + z)
+                    val topBlock = getNeighborBlock(world, x, y, z, 0, 1, 0, worldBaseX, worldBaseZ)
                     if (shouldRenderFace(block, topBlock)) {
                         val uv = TextureAtlas.getTileUV(block.topTex)
                         addQuad(
@@ -115,7 +138,7 @@ class Chunk(val chunkX: Int, val chunkZ: Int) {
                     }
 
                     // BOTTOM Face (-Y) - 0.5 shadow
-                    val bottomBlock = world.getBlock(worldBaseX + x, y - 1, worldBaseZ + z)
+                    val bottomBlock = getNeighborBlock(world, x, y, z, 0, -1, 0, worldBaseX, worldBaseZ)
                     if (shouldRenderFace(block, bottomBlock)) {
                         val uv = TextureAtlas.getTileUV(block.bottomTex)
                         addQuad(
@@ -130,7 +153,7 @@ class Chunk(val chunkX: Int, val chunkZ: Int) {
                     }
 
                     // NORTH Face (+Z) - 0.8 diffuse
-                    val northBlock = world.getBlock(worldBaseX + x, y, worldBaseZ + z + 1)
+                    val northBlock = getNeighborBlock(world, x, y, z, 0, 0, 1, worldBaseX, worldBaseZ)
                     if (shouldRenderFace(block, northBlock)) {
                         val uv = TextureAtlas.getTileUV(block.sideTex)
                         addQuad(
@@ -145,7 +168,7 @@ class Chunk(val chunkX: Int, val chunkZ: Int) {
                     }
 
                     // SOUTH Face (-Z) - 0.8 diffuse
-                    val southBlock = world.getBlock(worldBaseX + x, y, worldBaseZ + z - 1)
+                    val southBlock = getNeighborBlock(world, x, y, z, 0, 0, -1, worldBaseX, worldBaseZ)
                     if (shouldRenderFace(block, southBlock)) {
                         val uv = TextureAtlas.getTileUV(block.sideTex)
                         addQuad(
@@ -160,7 +183,7 @@ class Chunk(val chunkX: Int, val chunkZ: Int) {
                     }
 
                     // EAST Face (+X) - 0.65 diffuse
-                    val eastBlock = world.getBlock(worldBaseX + x + 1, y, worldBaseZ + z)
+                    val eastBlock = getNeighborBlock(world, x, y, z, 1, 0, 0, worldBaseX, worldBaseZ)
                     if (shouldRenderFace(block, eastBlock)) {
                         val uv = TextureAtlas.getTileUV(block.sideTex)
                         addQuad(
@@ -175,7 +198,7 @@ class Chunk(val chunkX: Int, val chunkZ: Int) {
                     }
 
                     // WEST Face (-X) - 0.65 diffuse
-                    val westBlock = world.getBlock(worldBaseX + x - 1, y, worldBaseZ + z)
+                    val westBlock = getNeighborBlock(world, x, y, z, -1, 0, 0, worldBaseX, worldBaseZ)
                     if (shouldRenderFace(block, westBlock)) {
                         val uv = TextureAtlas.getTileUV(block.sideTex)
                         addQuad(

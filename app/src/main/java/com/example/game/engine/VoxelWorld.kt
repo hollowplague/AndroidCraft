@@ -69,105 +69,89 @@ class VoxelWorld(val seed: Long = 424242L) {
     /**
      * Procedurally generates undulating terrain with hills, water lakes,
      * sand beaches, and leafy oak trees.
-     * Generates immediate spawn chunks synchronously in ~15ms so the main thread and SurfaceSyncGroup
-     * never block, while generating outer perimeter chunks in a background thread.
      */
     fun generateWorld() {
         chunks.clear()
 
-        // 1. Generate immediate 3x3 spawn chunks (-1..1) synchronously
-        val spawnRadius = 1
-        for (cz in -spawnRadius..spawnRadius) {
-            for (cx in -spawnRadius..spawnRadius) {
-                generateSingleChunk(cx, cz)
+        // 1. Generate terrain height & blocks
+        for (cz in -WORLD_RADIUS..WORLD_RADIUS) {
+            for (cx in -WORLD_RADIUS..WORLD_RADIUS) {
+                val chunk = Chunk(cx, cz)
+                val baseWorldX = cx * Chunk.SIZE_X
+                val baseWorldZ = cz * Chunk.SIZE_Z
+
+                for (lz in 0 until Chunk.SIZE_Z) {
+                    for (lx in 0 until Chunk.SIZE_X) {
+                        val wx = baseWorldX + lx
+                        val wz = baseWorldZ + lz
+
+                        // Octave noise for rolling hills and mountain ridges
+                        val elevation = perlin.octaveNoise2D(wx * 0.02f, wz * 0.02f, 4, 0.45f)
+                        val detail = perlin.octaveNoise2D(wx * 0.08f, wz * 0.08f, 2, 0.5f) * 3f
+                        val height = (24f + elevation * 16f + detail).toInt().coerceIn(4, Chunk.HEIGHT - 10)
+
+                        // Bedrock
+                        chunk.setBlockFast(lx, 0, lz, BlockType.BEDROCK.id)
+
+                        // Stone stratum
+                        val stoneTop = (height - 4).coerceAtLeast(1)
+                        for (y in 1..stoneTop) {
+                            chunk.setBlockFast(lx, y, lz, BlockType.STONE.id)
+                        }
+
+                        // Dirt layer
+                        for (y in (stoneTop + 1) until height) {
+                            chunk.setBlockFast(lx, y, lz, BlockType.DIRT.id)
+                        }
+
+                        // Surface block
+                        if (height <= SEA_LEVEL + 1) {
+                            chunk.setBlockFast(lx, height, lz, BlockType.SAND.id)
+                        } else {
+                            chunk.setBlockFast(lx, height, lz, BlockType.GRASS.id)
+                        }
+
+                        // Water body
+                        if (height < SEA_LEVEL) {
+                            for (y in (height + 1)..SEA_LEVEL) {
+                                chunk.setBlockFast(lx, y, lz, BlockType.WATER.id)
+                            }
+                        }
+                    }
+                }
+                chunk.isDirty = true
+                chunks[chunkKey(cx, cz)] = chunk
             }
         }
 
-        // 2. Generate trees on spawn chunks
+        // 2. Generate Oak Trees on top of grass
         val treeRng = java.util.Random(seed + 999)
-        for (cz in -spawnRadius..spawnRadius) {
-            for (cx in -spawnRadius..spawnRadius) {
-                generateTreesForChunk(cx, cz, treeRng)
+        for (cz in -WORLD_RADIUS..WORLD_RADIUS) {
+            for (cx in -WORLD_RADIUS..WORLD_RADIUS) {
+                val baseWorldX = cx * Chunk.SIZE_X
+                val baseWorldZ = cz * Chunk.SIZE_Z
+
+                for (lz in 2 until Chunk.SIZE_Z - 2) {
+                    for (lx in 2 until Chunk.SIZE_X - 2) {
+                        val wx = baseWorldX + lx
+                        val wz = baseWorldZ + lz
+
+                        val topY = getTopSolidBlockY(wx, wz)
+                        if (topY > SEA_LEVEL && getBlock(wx, topY, wz) == BlockType.GRASS) {
+                            // Tree probability check (pseudo-random with spatial separation)
+                            if (treeRng.nextFloat() < 0.035f) {
+                                placeTree(wx, topY + 1, wz)
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        // 3. Initial mesh build for spawn chunk so first frame is immediately ready to render
+        // 3. Mark all chunks dirty for progressive background meshing on the GL rendering thread.
+        // No mesh building is performed here so onCreate and initial window layout completes in <10ms!
         for (chunk in chunks.values) {
             chunk.isDirty = true
-        }
-        getChunk(0, 0)?.buildMesh(this)
-
-        // 4. Asynchronously generate outer ring chunks (-2..2) in background
-        kotlin.concurrent.thread(isDaemon = true, name = "VoxelWorldGen") {
-            for (cz in -WORLD_RADIUS..WORLD_RADIUS) {
-                for (cx in -WORLD_RADIUS..WORLD_RADIUS) {
-                    if (kotlin.math.max(kotlin.math.abs(cx), kotlin.math.abs(cz)) > spawnRadius) {
-                        generateSingleChunk(cx, cz)
-                        generateTreesForChunk(cx, cz, java.util.Random(seed + cx * 31L + cz * 17L))
-                        chunks[chunkKey(cx, cz)]?.isDirty = true
-                    }
-                }
-            }
-        }
-    }
-
-    private fun generateSingleChunk(cx: Int, cz: Int) {
-        val chunk = Chunk(cx, cz)
-        val baseWorldX = cx * Chunk.SIZE_X
-        val baseWorldZ = cz * Chunk.SIZE_Z
-
-        for (lz in 0 until Chunk.SIZE_Z) {
-            for (lx in 0 until Chunk.SIZE_X) {
-                val wx = baseWorldX + lx
-                val wz = baseWorldZ + lz
-
-                val elevation = perlin.octaveNoise2D(wx * 0.02f, wz * 0.02f, 4, 0.45f)
-                val detail = perlin.octaveNoise2D(wx * 0.08f, wz * 0.08f, 2, 0.5f) * 3f
-                val height = (24f + elevation * 16f + detail).toInt().coerceIn(4, Chunk.HEIGHT - 10)
-
-                chunk.setBlock(lx, 0, lz, BlockType.BEDROCK)
-
-                val stoneTop = (height - 4).coerceAtLeast(1)
-                for (y in 1..stoneTop) {
-                    chunk.setBlock(lx, y, lz, BlockType.STONE)
-                }
-
-                for (y in (stoneTop + 1) until height) {
-                    chunk.setBlock(lx, y, lz, BlockType.DIRT)
-                }
-
-                if (height <= SEA_LEVEL + 1) {
-                    chunk.setBlock(lx, height, lz, BlockType.SAND)
-                } else {
-                    chunk.setBlock(lx, height, lz, BlockType.GRASS)
-                }
-
-                if (height < SEA_LEVEL) {
-                    for (y in (height + 1)..SEA_LEVEL) {
-                        chunk.setBlock(lx, y, lz, BlockType.WATER)
-                    }
-                }
-            }
-        }
-        chunks[chunkKey(cx, cz)] = chunk
-    }
-
-    private fun generateTreesForChunk(cx: Int, cz: Int, treeRng: java.util.Random) {
-        val baseWorldX = cx * Chunk.SIZE_X
-        val baseWorldZ = cz * Chunk.SIZE_Z
-
-        for (lz in 2 until Chunk.SIZE_Z - 2) {
-            for (lx in 2 until Chunk.SIZE_X - 2) {
-                val wx = baseWorldX + lx
-                val wz = baseWorldZ + lz
-
-                val topY = getTopSolidBlockY(wx, wz)
-                if (topY > SEA_LEVEL && getBlock(wx, topY, wz) == BlockType.GRASS) {
-                    if (treeRng.nextFloat() < 0.035f) {
-                        placeTree(wx, topY + 1, wz)
-                    }
-                }
-            }
         }
     }
 

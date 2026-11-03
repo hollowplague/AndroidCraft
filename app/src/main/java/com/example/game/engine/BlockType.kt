@@ -169,8 +169,11 @@ enum class BlockType(
     );
 
     companion object {
-        private val ID_MAP = values().associateBy { it.id }
-        fun fromId(id: Byte): BlockType = ID_MAP[id] ?: AIR
+        private val BY_ID = Array(16) { id -> values().firstOrNull { it.id == id.toByte() } ?: AIR }
+        fun fromId(id: Byte): BlockType {
+            val intId = id.toInt()
+            return if (intId in 0..15) BY_ID[intId] else AIR
+        }
 
         /** All blocks selectable in creative mode (excludes Air and Bedrock) */
         val CREATIVE_INVENTORY = listOf(

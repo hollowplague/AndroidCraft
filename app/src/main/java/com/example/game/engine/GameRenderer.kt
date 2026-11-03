@@ -170,7 +170,7 @@ class GameRenderer(
         val sunDirY = sin(sunAngle)
         val sunDirZ = 0.35f
 
-        // Rebuild dirty chunk meshes progressively (up to 3 per frame) closest to player first
+        // Rebuild dirty chunk meshes progressively (up to 2 per frame) closest to player first
         var rebuilt = 0
         val dirtyChunks = world.getAllChunks().filter { it.isDirty }
         if (dirtyChunks.isNotEmpty()) {
@@ -184,7 +184,7 @@ class GameRenderer(
             for (chunk in sorted) {
                 chunk.buildMesh(world)
                 rebuilt++
-                if (rebuilt >= 3) break
+                if (rebuilt >= 2) break
             }
         }
 

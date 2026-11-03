@@ -16,21 +16,20 @@ object TextureAtlas {
     const val TILE_PIXELS = 16
     const val ATLAS_SIZE = ATLAS_GRID_SIZE * TILE_PIXELS // 64x64 pixels
 
-    private var textureId: Int = -1
+    private var cachedBitmap: Bitmap? = null
 
     /**
      * Initializes and uploads the texture atlas into OpenGL ES.
      * Returns the GL texture handle.
      */
     fun loadTexture(): Int {
-        if (textureId > 0) return textureId
-
-        val bitmap = createAtlasBitmap()
         val textures = IntArray(1)
         GLES20.glGenTextures(1, textures, 0)
-        textureId = textures[0]
+        val newTextureId = textures[0]
 
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId)
+        val bitmap = cachedBitmap ?: createAtlasBitmap().also { cachedBitmap = it }
+
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, newTextureId)
 
         // GL_NEAREST preserves crisp Minecraft pixel art without blurry bilinear filtering
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST)
@@ -39,9 +38,8 @@ object TextureAtlas {
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
 
         GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
-        bitmap.recycle()
 
-        return textureId
+        return newTextureId
     }
 
     /**

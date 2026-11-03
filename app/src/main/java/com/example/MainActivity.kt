@@ -168,6 +168,7 @@ fun MinecraftGameApp(
                 GLSurfaceView(context).apply {
                     setEGLContextClientVersion(2)
                     preserveEGLContextOnPause = true
+                    setZOrderMediaOverlay(false)
                     setRenderer(renderer)
                     renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
                     onSurfaceCreated(this)

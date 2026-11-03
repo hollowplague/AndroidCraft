@@ -2,6 +2,9 @@ name: Build and Release AndroidCraft APK
 
 on:
   push:
+    branches:
+      - master
+      - main
     tags:
       - 'v*'
   release:
@@ -74,12 +77,12 @@ jobs:
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'release'
         with:
-          tag_name: ${{ github.event.inputs.tag_name || github.ref_name || 'v0.1.0' }}
+          tag_name: ${{ github.event.inputs.tag_name || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || 'v0.1.0' }}
           name: ${{ github.event.inputs.release_name || 'AndroidCraft v0.1.0' }}
           draft: false
           prerelease: false
+          make_latest: true
           generate_release_notes: true
           files: release-artifacts/AndroidCraft-0.1.0.apk
         env:
